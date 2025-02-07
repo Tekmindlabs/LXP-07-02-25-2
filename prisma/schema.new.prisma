@@ -1,0 +1,235 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+	provider = "prisma-client-js"
+}
+
+datasource db {
+	provider = "postgresql"
+	url      = env("DATABASE_URL")
+}
+
+model Account {
+	id                String   @id @default(cuid())
+	userId            String
+	type              String
+	provider          String
+	providerAccountId String
+	refresh_token     String?  @db.Text
+	access_token      String?  @db.Text
+	expires_at        Int?
+	token_type        String?
+	scope             String?
+	id_token          String?  @db.Text
+	session_state     String?
+	user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+	createdAt         DateTime @default(now())
+	updatedAt         DateTime @updatedAt
+
+	@@unique([provider, providerAccountId])
+	@@map("accounts")
+}
+
+model Session {
+	id           String   @id @default(cuid())
+	sessionToken String   @unique
+	userId       String
+	expires      DateTime
+	user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+	@@map("sessions")
+}
+
+model User {
+	id            String     @id @default(cuid())
+	name          String?
+	email         String?    @unique
+	emailVerified DateTime?
+	image         String?
+	accounts      Account[]
+	sessions      Session[]
+	roles         UserRole[]
+	createdAt     DateTime   @default(now())
+	updatedAt     DateTime   @updatedAt
+
+	@@map("users")
+}
+
+model VerificationToken {
+	identifier String
+	token      String   @unique
+	expires    DateTime
+
+	@@unique([identifier, token])
+	@@map("verification_tokens")
+}
+
+model Role {
+	id                 String               @id @default(cuid())
+	name               String               @unique
+	description        String?
+	userRoles          UserRole[]
+	permissions        RolePermission[]
+	documentPermissions DocumentPermission[]
+	createdAt          DateTime             @default(now())
+	updatedAt          DateTime             @updatedAt
+}
+
+model UserRole {
+	id        String   @id @default(cuid())
+	user      User     @relation(fields: [userId], references: [id])
+	userId    String
+	role      Role     @relation(fields: [roleId], references: [id])
+	roleId    String
+	createdAt DateTime @default(now())
+	updatedAt DateTime @updatedAt
+
+	@@map("user_roles")
+}
+
+model Permission {
+	id          String           @id @default(cuid())
+	name        String           @unique
+	description String?
+	roles       RolePermission[]
+	createdAt   DateTime         @default(now())
+	updatedAt   DateTime         @updatedAt
+
+	@@map("permissions")
+}
+
+model RolePermission {
+	id           String     @id @default(cuid())
+	role         Role       @relation(fields: [roleId], references: [id])
+	roleId       String
+	permission   Permission @relation(fields: [permissionId], references: [id])
+	permissionId String
+	createdAt    DateTime   @default(now())
+	updatedAt    DateTime   @updatedAt
+
+	@@map("role_permissions")
+}
+
+model KnowledgeBase {
+	id          String           @id @default(cuid())
+	name        String
+	description String?
+	folders     DocumentFolder[]
+	documents   Document[]
+	createdAt   DateTime         @default(now())
+	updatedAt   DateTime         @updatedAt
+
+	@@map("knowledge_bases")
+}
+
+model Document {
+	id             String              @id @default(cuid())
+	title          String
+	type           String
+	content        String              @db.Text
+	metadata       Json?
+	embeddings     Float[]
+	folder         DocumentFolder      @relation(fields: [folderId], references: [id])
+	folderId       String
+	knowledgeBase  KnowledgeBase      @relation(fields: [knowledgeBaseId], references: [id])
+	knowledgeBaseId String
+	workspaces     WorkspaceDocument[]
+	createdAt      DateTime            @default(now())
+	updatedAt      DateTime            @updatedAt
+
+	@@map("documents")
+}
+
+model DocumentFolder {
+	id             String         @id @default(cuid())
+	name           String
+	description    String?
+	parentFolder   DocumentFolder? @relation("FolderHierarchy", fields: [parentFolderId], references: [id])
+	parentFolderId String?
+	subFolders     DocumentFolder[] @relation("FolderHierarchy")
+	documents      Document[]
+	knowledgeBase  KnowledgeBase  @relation(fields: [knowledgeBaseId], references: [id])
+	knowledgeBaseId String
+	createdAt      DateTime       @default(now())
+	updatedAt      DateTime       @updatedAt
+
+	@@map("document_folders")
+}
+
+model DocumentPermission {
+	id         String   @id @default(cuid())
+	document   Document @relation(fields: [documentId], references: [id])
+	documentId String
+	role       Role     @relation(fields: [roleId], references: [id])
+	roleId     String
+	createdAt  DateTime @default(now())
+	updatedAt  DateTime @updatedAt
+
+	@@map("document_permissions")
+}
+
+model Workspace {
+	id               String             @id @default(cuid())
+	name             String
+	description      String?
+	type             WorkspaceType
+	documents        WorkspaceDocument[]
+	vectorCollection String             @unique
+	settings         WorkspaceSettings?
+	chat            WorkspaceChat?
+	createdAt        DateTime           @default(now())
+	updatedAt        DateTime           @updatedAt
+
+	@@map("workspaces")
+}
+
+enum WorkspaceType {
+	CLASS
+	ADMIN
+}
+
+model WorkspaceDocument {
+	id          String    @id @default(cuid())
+	workspace   Workspace @relation(fields: [workspaceId], references: [id])
+	workspaceId String
+	document    Document  @relation(fields: [documentId], references: [id])
+	documentId  String
+	createdAt   DateTime  @default(now())
+	updatedAt   DateTime  @updatedAt
+
+	@@map("workspace_documents")
+}
+
+model WorkspaceSettings {
+	id          String    @id @default(cuid())
+	workspace   Workspace @relation(fields: [workspaceId], references: [id])
+	workspaceId String    @unique
+	settings    Json
+	createdAt   DateTime  @default(now())
+	updatedAt   DateTime  @updatedAt
+
+	@@map("workspace_settings")
+}
+
+model WorkspaceChat {
+	id          String               @id @default(cuid())
+	workspace   Workspace           @relation(fields: [workspaceId], references: [id])
+	workspaceId String              @unique
+	messages    WorkspaceChatMessage[]
+	createdAt   DateTime            @default(now())
+	updatedAt   DateTime            @updatedAt
+
+	@@map("workspace_chats")
+}
+
+model WorkspaceChatMessage {
+	id        String       @id @default(cuid())
+	content   String       @db.Text
+	role      String
+	chatId    String
+	chat      WorkspaceChat @relation(fields: [chatId], references: [id])
+	createdAt DateTime @default(now())
+
+	@@map("workspace_chat_messages")
+}

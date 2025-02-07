@@ -1,0 +1,14 @@
+{
+  "version": "0.2",
+  "words": [
+    "TRPC",
+    "trpc"
+  ],
+  "language": "en",
+  "languageSettings": [
+    {
+      "languageId": "*",
+      "dictionaries": ["words"]
+    }
+  ]
+}
