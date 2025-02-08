@@ -1,19 +1,26 @@
 import { z } from "zod";
-import { createTRPCRouter, protectedProcedure } from "../trpc";
+import { createTRPCRouter, permissionProtectedProcedure } from "../trpc";
 import { AttendanceStatus } from "@prisma/client";
 import { startOfDay, endOfDay, subDays, startOfWeek, format } from "date-fns";
 import { TRPCError } from "@trpc/server";
+import { Permissions } from "@/utils/permissions";
+import type { AttendanceRecord, AttendanceStatsData, AttendanceDashboardData } from "@/types/attendance";
+
+interface StudentAbsenceRecord {
+    name: string;
+    count: number;
+}
 
 // Cache implementation
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 interface CacheEntry<T> {
-    data: T;
+    data: AttendanceStatsData | AttendanceDashboardData;
     timestamp: number;
 }
 const statsCache = new Map<string, CacheEntry<any>>();
 
 export const attendanceRouter = createTRPCRouter({
-    getByDateAndClass: protectedProcedure
+    getByDateAndClass: permissionProtectedProcedure(Permissions.ATTENDANCE_VIEW)
       .input(z.object({
         date: z.date(),
         classId: z.string(),
@@ -40,7 +47,7 @@ export const attendanceRouter = createTRPCRouter({
         });
       }),
   
-    batchSave: protectedProcedure
+    batchSave: permissionProtectedProcedure(Permissions.ATTENDANCE_MANAGE)
       .input(z.object({
         records: z.array(z.object({
           studentId: z.string(),
@@ -79,7 +86,8 @@ export const attendanceRouter = createTRPCRouter({
         );
       }),
 
-getStats: protectedProcedure.query(async ({ ctx }) => {
+getStats: permissionProtectedProcedure(Permissions.ATTENDANCE_VIEW)
+    .query(async ({ ctx }) => {
     try {
         const cacheKey = `stats_${ctx.session.user.id}`;
         const cached = statsCache.get(cacheKey);
@@ -155,7 +163,7 @@ getStats: protectedProcedure.query(async ({ ctx }) => {
         ]);
 
         // Process class attendance
-        const classStats = classAttendance.reduce((acc, record) => {
+        const classStats = classAttendance.reduce((acc: Record<string, { total: number; present: number }>, record) => {
             const className = record.class.name;
             if (!acc[className]) {
                 acc[className] = { total: 0, present: 0 };
@@ -175,29 +183,31 @@ getStats: protectedProcedure.query(async ({ ctx }) => {
             .sort((a, b) => a.percentage - b.percentage)
             .slice(0, 3);
 
-        const result = {
+        const mostAbsentStudents = Object.entries(absentStudents.reduce((acc: Record<string, StudentAbsenceRecord>, curr) => {
+            const studentId = curr.student.id;
+            acc[studentId] = {
+                name: curr.student.user.name ?? 'Unknown',
+                count: (acc[studentId]?.count || 0) + 1
+            };
+            return acc;
+        }, {}))
+            .map(([, data]) => ({
+                name: data.name,
+                absences: data.count
+            }))
+            .sort((a, b) => b.absences - a.absences)
+            .slice(0, 3);
+
+        const result: AttendanceStatsData = {
             todayStats: {
-                present: todayAttendance.filter(a => a.status === AttendanceStatus.PRESENT).length,
-                absent: todayAttendance.filter(a => a.status === AttendanceStatus.ABSENT).length,
+                present: todayAttendance.filter((a: { status: AttendanceStatus }) => a.status === AttendanceStatus.PRESENT).length,
+                absent: todayAttendance.filter((a: { status: AttendanceStatus }) => a.status === AttendanceStatus.ABSENT).length,
                 total: todayAttendance.length
             },
             weeklyPercentage: weeklyAttendance.length > 0 
-                ? (weeklyAttendance.filter(a => a.status === AttendanceStatus.PRESENT).length / weeklyAttendance.length) * 100 
+                ? (weeklyAttendance.filter((a: { status: AttendanceStatus }) => a.status === AttendanceStatus.PRESENT).length / weeklyAttendance.length) * 100 
                 : 0,
-            mostAbsentStudents: Object.entries(absentStudents.reduce((acc, curr) => {
-                const studentId = curr.student.id;
-                acc[studentId] = {
-                    name: curr.student.user.name ?? 'Unknown',
-                    count: (acc[studentId]?.count || 0) + 1
-                };
-                return acc;
-            }, {} as Record<string, { name: string; count: number }>))
-                .map(([, data]) => ({
-                    name: data.name,
-                    absences: data.count
-                }))
-                .sort((a, b) => b.absences - a.absences)
-                .slice(0, 3),
+            mostAbsentStudents,
             lowAttendanceClasses
         };
 
@@ -212,7 +222,8 @@ getStats: protectedProcedure.query(async ({ ctx }) => {
     }
 }),
 
-getDashboardData: protectedProcedure.query(async ({ ctx }) => {
+getDashboardData: permissionProtectedProcedure(Permissions.ATTENDANCE_VIEW)
+    .query(async ({ ctx }) => {
     try {
         const cacheKey = `dashboard_${ctx.session.user.id}`;
         const cached = statsCache.get(cacheKey);
@@ -246,7 +257,7 @@ getDashboardData: protectedProcedure.query(async ({ ctx }) => {
         });
 
         // Process attendance trend by date
-        const attendanceByDate = attendanceData.reduce((acc, record) => {
+        const attendanceByDate = attendanceData.reduce((acc: Record<string, { total: number; present: number }>, record) => {
             const dateKey = format(record.date, 'yyyy-MM-dd');
             if (!acc[dateKey]) {
                 acc[dateKey] = { total: 0, present: 0 };
@@ -259,7 +270,7 @@ getDashboardData: protectedProcedure.query(async ({ ctx }) => {
         }, {} as Record<string, { total: number; present: number }>);
 
         // Process attendance by class
-        const attendanceByClass = attendanceData.reduce((acc, record) => {
+        const attendanceByClass = attendanceData.reduce((acc: Record<string, { total: number; present: number; absent: number }>, record) => {
             const className = record.class.name;
             if (!acc[className]) {
                 acc[className] = { total: 0, present: 0, absent: 0 };
@@ -273,7 +284,7 @@ getDashboardData: protectedProcedure.query(async ({ ctx }) => {
             return acc;
         }, {} as Record<string, { total: number; present: number; absent: number }>);
 
-        const result = {
+        const result: AttendanceDashboardData = {
             attendanceTrend: Object.entries(attendanceByDate).map(([date, stats]) => ({
                 date,
                 percentage: (stats.present / stats.total) * 100

@@ -16,7 +16,7 @@ import type { CreateNextContextOptions } from '@trpc/server/adapters/next';
 export const createTRPCContext = async (opts: CreateNextContextOptions) => {
   const session = await getServerAuthSession();
 
-  // Ensure we have the user's roles in the session
+  // Ensure we have the user's roles and permissions in the session
   if (session?.user) {
     const userWithRoles = await prisma.user.findUnique({
       where: { id: session.user.id },
@@ -33,7 +33,14 @@ export const createTRPCContext = async (opts: CreateNextContextOptions) => {
       }
     });
     
-    session.user.roles = userWithRoles?.userRoles?.map(ur => ur.role.name) || [];
+    const roles = userWithRoles?.userRoles?.map(ur => ur.role.name) || [];
+    session.user.roles = roles;
+    
+    // Add permissions based on roles
+    const permissions = roles.flatMap(role => 
+      RolePermissions[role as keyof typeof RolePermissions] || []
+    );
+    session.user.permissions = permissions;
   }
 
   return {

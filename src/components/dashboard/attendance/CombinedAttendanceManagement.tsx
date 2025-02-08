@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { TRPCClientErrorBase } from '@trpc/client';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { Permissions } from "@/utils/permissions";
 import { Calendar } from '@/components/ui/calendar';
 import type { RouterOutputs } from '@/utils/api';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
@@ -25,14 +26,20 @@ interface StudentWithUser {
   };
 }
 
-interface ExistingAttendance {
-  studentId: string;
-  status: AttendanceStatus;
-  notes: string | null;
-}
-
-
 export const CombinedAttendanceManagement = () => {
+  // Default values for stats and dashboard data
+  const statsDataDefault: AttendanceStatsData = {
+    todayStats: { present: 0, absent: 0, total: 0 },
+    weeklyPercentage: 0,
+    mostAbsentStudents: [],
+    lowAttendanceClasses: []
+  };
+
+  const dashboardDataDefault: AttendanceDashboardData = {
+    attendanceTrend: [],
+    classAttendance: []
+  };
+
   const { data: session, status: sessionStatus } = useSession();
   const { toast } = useToast();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -45,24 +52,23 @@ export const CombinedAttendanceManagement = () => {
 
   const [attendanceData, setAttendanceData] = useState<Map<string, AttendanceRecord>>(new Map());
 
-  // Improved role checking
-  const userRoles = session?.user?.roles || [];
-  const isAdmin = userRoles.includes('ADMIN');
-  const isSuperAdmin = userRoles.includes('SUPER_ADMIN');
-  const isTeacher = userRoles.includes('TEACHER');
-  const hasAccessPermission = isAdmin || isSuperAdmin || isTeacher;
+  // Permission-based checking
+  const userPermissions = session?.user?.permissions || [];
+  const canViewAttendance = userPermissions.includes(Permissions.ATTENDANCE_VIEW);
+  const canManageAttendance = userPermissions.includes(Permissions.ATTENDANCE_MANAGE);
+  const canViewReports = userPermissions.includes(Permissions.ATTENDANCE_VIEW);
 
   // Debug logging
   useEffect(() => {
     console.log('Session Status:', sessionStatus);
-    console.log('User Roles:', userRoles);
+    console.log('User Permissions:', userPermissions);
     console.log('Access Permissions:', {
-      isAdmin,
-      isSuperAdmin,
-      isTeacher,
-      hasAccessPermission
+      canViewAttendance,
+      canManageAttendance,
+      canViewReports
     });
-  }, [sessionStatus, userRoles, isAdmin, isSuperAdmin, isTeacher, hasAccessPermission]);
+  }, [sessionStatus, userPermissions, canViewAttendance, canManageAttendance, canViewReports]);
+
 
   // Type definition for stats data
   type StatsData = RouterOutputs['attendance']['getStats'];
@@ -72,7 +78,7 @@ export const CombinedAttendanceManagement = () => {
   const { data: classes, error: classError } = api.class.list.useQuery(
     undefined,
     {
-      enabled: sessionStatus === 'authenticated' && hasAccessPermission,
+        enabled: sessionStatus === 'authenticated' && canViewAttendance,
       retry: 1
     }
   );
@@ -236,12 +242,8 @@ export const CombinedAttendanceManagement = () => {
         ) : statsError ? (
           <ErrorMessage error={statsError} />
         ) : (
-          <AttendanceStats {...(statsData || {
-          todayStats: { present: 0, absent: 0, total: 0 },
-          weeklyPercentage: 0,
-          mostAbsentStudents: [],
-          lowAttendanceClasses: []
-          })} />
+            <AttendanceStats {...(statsData || statsDataDefault)} />
+
         )}
 
       <Card className="mb-4">
@@ -265,10 +267,10 @@ export const CombinedAttendanceManagement = () => {
             ) : dashboardError ? (
               <ErrorMessage error={dashboardError} />
             ) : (
-              <AttendanceDashboard 
-              attendanceTrend={dashboardData?.attendanceTrend}
-              classAttendance={dashboardData?.classAttendance}
-              />
+                <AttendanceDashboard 
+                attendanceTrend={dashboardData?.attendanceTrend || dashboardDataDefault.attendanceTrend}
+                classAttendance={dashboardData?.classAttendance || dashboardDataDefault.classAttendance}
+                />
             )}
             </TabsContent>
 
@@ -288,7 +290,7 @@ export const CombinedAttendanceManagement = () => {
                     <SelectItem value="loading" disabled>Loading...</SelectItem>
                     ) : !session?.user ? (
                     <SelectItem value="not-signed-in" disabled>Please sign in</SelectItem>
-                    ) : !hasAccessPermission ? (
+                    ) : !canViewAttendance ? (
                     <SelectItem value="unauthorized" disabled>Unauthorized access</SelectItem>
                     ) : classError ? (
                     <SelectItem value="error-loading" disabled>Error loading classes</SelectItem>
@@ -481,7 +483,7 @@ export const CombinedAttendanceManagement = () => {
           <div className="mt-4 flex justify-end">
           <Button
             onClick={handleSave}
-            disabled={!selectedClass || attendanceData.size === 0}
+            disabled={!selectedClass || attendanceData.size === 0 || !canManageAttendance}
           >
             Save Attendance
           </Button>

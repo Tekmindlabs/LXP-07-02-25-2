@@ -52,6 +52,11 @@ export const Permissions = {
   SUBJECT_MANAGE: "subject:manage",
   SUBJECT_DELETE: "subject:delete",
   SUBJECT_ASSIGN_TEACHERS: "subject:assign-teachers",
+
+  // Attendance permissions
+  ATTENDANCE_VIEW: "attendance:view",
+  ATTENDANCE_MANAGE: "attendance:manage",
+  ATTENDANCE_REPORT: "attendance:report",
 } as const;
 
 export type Permission = typeof Permissions[keyof typeof Permissions];
@@ -85,6 +90,9 @@ export const RolePermissions: Record<Role, Permission[]> = {
     Permissions.GRADEBOOK_MANAGE,
     Permissions.GRADE_ACTIVITY,
     Permissions.GRADE_MODIFY,
+    Permissions.ATTENDANCE_VIEW,
+    Permissions.ATTENDANCE_MANAGE,
+    Permissions.ATTENDANCE_REPORT,
   ],
   [DefaultRoles.PROGRAM_COORDINATOR]: [
     Permissions.USER_READ,
@@ -95,6 +103,8 @@ export const RolePermissions: Record<Role, Permission[]> = {
     Permissions.GRADEBOOK_OVERVIEW,
     Permissions.GRADEBOOK_MANAGE,
     Permissions.GRADE_ACTIVITY,
+    Permissions.ATTENDANCE_VIEW,
+    Permissions.ATTENDANCE_MANAGE,
   ],
   [DefaultRoles.TEACHER]: [
     Permissions.USER_READ,
@@ -102,6 +112,8 @@ export const RolePermissions: Record<Role, Permission[]> = {
     Permissions.GRADE_ACTIVITY,
     Permissions.GRADEBOOK_VIEW,
     Permissions.GRADEBOOK_OVERVIEW,
+    Permissions.ATTENDANCE_VIEW,
+    Permissions.ATTENDANCE_MANAGE,
   ],
   [DefaultRoles.STUDENT]: [
     Permissions.USER_READ,
