@@ -1,4 +1,5 @@
-import { createTRPCRouter } from "@/server/api/trpc";
+import { createTRPCRouter, debugRouter } from "./trpc";
+import { prisma } from "../db";
 import { settingsRouter } from "./routers/settings";
 import { userRouter } from "./routers/user";
 import { roleRouter } from "./routers/role";
@@ -27,6 +28,7 @@ import { coordinatorRouter } from "./routers/coordinator";
 
 
 export const appRouter = createTRPCRouter({
+  debug: debugRouter,
   settings: settingsRouter,
   user: userRouter,
   role: roleRouter,
@@ -54,5 +56,24 @@ export const appRouter = createTRPCRouter({
   gradebook: gradebookRouter,
 });
 
+
+// Initialize roles and permissions if needed
+const initializeRolesAndPermissions = async () => {
+  try {
+    const superAdminRole = await prisma.role.upsert({
+      where: { name: 'super-admin' },
+      update: {},
+      create: {
+        name: 'super-admin',
+        description: 'Super Administrator with full access'
+      }
+    });
+    console.log('Roles initialized successfully');
+  } catch (error) {
+    console.error('Error initializing roles:', error);
+  }
+};
+
+initializeRolesAndPermissions();
 
 export type AppRouter = typeof appRouter;

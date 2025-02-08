@@ -11,6 +11,14 @@ export const prisma =
     log: env.NODE_ENV === "development" 
       ? ['query', 'error', 'warn'] as Prisma.LogLevel[]
       : ['error'] as Prisma.LogLevel[],
+    errorFormat: 'pretty',
   });
+
+if (process.env.NODE_ENV !== "production") {
+  prisma.$on('query', (e) => {
+    console.log('Query: ' + e.query);
+    console.log('Duration: ' + e.duration + 'ms');
+  });
+}
 
 if (env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;

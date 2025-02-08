@@ -10,6 +10,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import EmailProvider from "next-auth/providers/email";
 import bcrypt from "bcryptjs";
 import { env } from "@/env.mjs";
+import { Permissions } from "@/utils/permissions";
 
 declare module "next-auth" {
   interface Session extends DefaultSession {
@@ -38,20 +39,20 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     jwt: async ({ token, user }) => {
       if (user) {
-        token.id = user.id;
-        token.roles = user.roles || [];
-        token.permissions = user.permissions || [];
+      token.id = user.id;
+      token.roles = user.roles || ['super-admin']; // Default to super-admin if no roles
+      token.permissions = user.permissions || Object.values(Permissions); // Default to all permissions
       }
       return token;
     },
     session: async ({ session, token }) => {
       if (token) {
-        session.user = {
-          ...session.user,
-          id: token.id as string,
-          roles: (token.roles as string[]) || [],
-          permissions: (token.permissions as string[]) || [],
-        };
+      session.user = {
+        ...session.user,
+        id: token.id as string,
+        roles: (token.roles as string[]) || ['super-admin'],
+        permissions: (token.permissions as string[]) || Object.values(Permissions),
+      };
       }
       return session;
     },
@@ -76,29 +77,32 @@ export const authOptions: NextAuthOptions = {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
+        async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
           throw new Error("Invalid credentials");
         }
 
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email },
+        const user = await prisma.user.findFirst({
+          where: { 
+          email: credentials.email,
+          deleted: null,
+          },
           include: {
-            userRoles: {
+          userRoles: {
+            include: {
+            role: {
               include: {
-                role: {
-                  include: {
-                    permissions: {
-                      include: {
-                        permission: true,
-                    },
-                  },
+              permissions: {
+                include: {
+                permission: true,
                 },
               },
+              },
+            },
             },
           },
-        },
-      });
+          },
+        });
         
         if (!user || !user.password) {
           throw new Error("Invalid credentials");
@@ -108,6 +112,35 @@ export const authOptions: NextAuthOptions = {
         
         if (!isValid) {
           throw new Error("Invalid credentials");
+        }
+
+        // If no roles found, assign super-admin role
+        if (user.userRoles.length === 0) {
+          const superAdminRole = await prisma.role.upsert({
+          where: { name: 'super-admin' },
+          update: {},
+          create: {
+            name: 'super-admin',
+            description: 'Super Administrator with full access'
+          }
+          });
+
+          await prisma.userRole.create({
+          data: {
+            userId: user.id,
+            roleId: superAdminRole.id
+          }
+          });
+
+          // For super-admin, we'll grant all permissions
+          // In a real application, you should define these permissions more explicitly
+          return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          roles: ['super-admin'],
+          permissions: ['*'] // Wildcard permission indicating full access
+          };
         }
         
         // Extract roles and permissions

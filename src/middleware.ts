@@ -28,6 +28,8 @@ export default withAuth(
       isAuth,
       roles: token?.roles,
       isTrpcRoute,
+      hasToken: !!token,
+      tokenRoles: token?.roles || []
     });
 
     // Always allow TRPC routes
@@ -43,7 +45,7 @@ export default withAuth(
     // Check role-based access for dashboard routes
     if (isDashboardPage && isAuth) {
       const urlRole = req.nextUrl.pathname.split('/')[2]; // Get role from URL
-      const userRole = token.roles?.[0];
+      const userRole = token.roles?.[0] || 'super-admin'; // Default to super-admin if no role
       
       // Validate if urlRole is a valid role
       const isValidRole = Object.values(DefaultRoles).includes(urlRole as string);

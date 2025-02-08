@@ -73,10 +73,9 @@ export const DefaultRoles = {
 export type Role = typeof DefaultRoles[keyof typeof DefaultRoles];
 
 export const RolePermissions: Record<Role, Permission[]> = {
-  [DefaultRoles.SUPER_ADMIN]: [
-    ...Object.values(Permissions),
-  ],
+  [DefaultRoles.SUPER_ADMIN]: Object.values(Permissions),
   [DefaultRoles.ADMIN]: [
+
     Permissions.USER_CREATE,
     Permissions.USER_READ,
     Permissions.USER_UPDATE,
